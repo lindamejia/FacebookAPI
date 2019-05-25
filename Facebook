@@ -1,0 +1,228 @@
+import React, { Component } from "react";
+import * as usersService from "../../services/usersService";
+import * as profileService from "../../services/profileService";
+import PropTypes from "prop-types";
+import { logger } from "./common";
+
+const _logger = logger.extend("Facebook");
+
+class Facebook extends Component {
+  componentDidMount() {
+    window.fbAsyncInit = function() {
+      _logger("fbAsyncInit firing");
+      window.FB.init({
+        appId: "270551273615449",
+        cookie: true, // enable cookies to allow the server to access the session
+        xfbml: true, // parse social plugins on this page
+        version: "v3.2"
+      });
+    };
+
+    (function(d, s, id) {
+      _logger(`attempting to add ${id} to page`);
+      var js,
+        fjs = d.getElementsByTagName(s)[0];
+      if (d.getElementById(id)) {
+        _logger(`Found ${id} on page already`);
+        window.fbAsyncInit();
+      }
+      js = d.createElement(s);
+      js.id = id;
+      js.src = "//connect.facebook.net/en_US/sdk.js";
+      fjs.parentNode.insertBefore(js, fjs);
+
+      _logger(`script ${id} added to page`);
+    })(document, "script", "facebook-jssdk");
+  }
+
+  facebookLogin = () => {
+    window.FB.login(
+      function(resp) {
+        this.statusChangeCallback(resp);
+      }.bind(this),
+      {
+        scope: "email,user_location,public_profile,user_birthday"
+      }
+    );
+  };
+
+  checkLoginState() {
+    window.FB.getLoginStatus(
+      function(response) {
+        this.statusChangeCallback(response);
+      }.bind(this)
+    );
+  }
+
+  statusChangeCallback(response) {
+    const accessToken = response.authResponse.accessToken;
+    console.log("statusChangeCallback", accessToken);
+    if (response.status === "connected") {
+      //alert("Connected to facebook. Retriving user from fb");
+      // Logged into your app and Facebook.
+      // this.props.history.push("/profile");
+      // const accessToken = response.authResponse.accessToken;
+
+      this.fetchDataFacebook(accessToken);
+    } else if (response.status === "not_authorized") {
+      console.log("Import error", "Authorize app to import data", "error");
+    } else {
+      console.log(
+        "Import error",
+        "Error occured while importing data",
+        "error"
+      );
+    }
+    // return accessToken;
+  }
+
+  fetchDataFacebook = accessToken => {
+    console.log("Welcome!  Fetching your information.... ");
+    window.FB.api(
+      "/me",
+      "GET",
+      { fields: "email" },
+      function(user) {
+        console.log(user, accessToken);
+
+        this.loginWithFacebook(user, accessToken);
+      }.bind(this)
+    );
+  };
+
+  loginWithFacebook(user, accessToken) {
+    const payload = {
+      email: user.email,
+      accessToken
+    };
+
+    usersService
+      .loginFacebook(payload)
+      .then(this.facebookLoginSuccess)
+      .catch(this.facebookLoginError);
+  }
+
+  facebookLoginSuccess = () => {
+    usersService
+      .currentUser()
+      .then(this.currentUserSuccess)
+      // .catch(this.currentUserError);
+      .catch(this.fetchProfileData());
+  };
+
+  currentUserSuccess = data => {
+    console.log(data);
+    this.props.getUserRoles();
+    //this.props.history.push("/dashboard/customer");
+    //this.props.history.push(`/users/profiles/${data.item.id}`);
+    // this.props.history.push(`/users/profiles/${data.item.id}`);
+  };
+
+  currentUserError = error => {
+    console.log(error);
+    this.fetchProfileData();
+  };
+
+  FacebookLoginError = err => {
+    console.log(err);
+  };
+
+  fetchProfileData = () => {
+    console.log("Welcome!  Fetching your Profile Info.... ");
+
+    window.FB.api(
+      "/me",
+      "GET",
+      { fields: "first_name, last_name, picture, birthday" },
+      function(response) {
+        console.log(response);
+
+        this.facebookProfileForm(response);
+      }.bind(this)
+    );
+  };
+
+  facebookProfileForm = response => {
+    const payload = {
+      firstName: response.first_name,
+      lastName: response.last_name,
+      dob: response.birthday,
+      avatarUrl: response.picture.data.url,
+      phoneNumber: "Please Update Phone Number",
+      description: "Please Update Description"
+    };
+    profileService
+      .createProfile(payload)
+      .then(this.onCreateSuccess)
+      .catch(this.onCreateFail);
+  };
+
+  onCreateSuccess = data => {
+    console.log(`Success POST new Profile`, data);
+    usersService
+      .currentUser()
+      .then(this.currentUserSuccess)
+      .catch(this.currentUserError);
+    // this.props.history
+    //   .push(`/users/profiles/${data.item.id}`)
+
+    // this.props.history.push("/dashboard/customer");
+    // setTimeout(() => {
+    //   this.props.displayCurrentUser();
+    // }, 3000);
+    // this.props.history.push(`/profile/display/${data.item}`);
+    // this.props.history.push(`/users/profiles/${id}`);
+    // this.props.closeRoutingPath(null);
+  };
+
+  onCreateFail = error => {
+    console.log(`something went wrong with creating a new profile`, error);
+  };
+
+  render() {
+    return (
+      <div>
+        {/* <center> */}
+        {/* <div
+          //className="fb-login-button"
+          className="col-7"
+          data-size="medium"
+          data-button-type="login_with"
+          data-auto-logout-link="false"
+          data-use-continue-as="false"
+          onClick={this.facebookLogin}
+        >
+          <img
+            alt="pic"
+            src="https://pngimage.net/wp-content/uploads/2018/06/login-with-facebook-button-png-transparent-4.png"
+            width="190px"
+          />
+        </div> */}
+        <button
+          className="btn btn-facebook"
+          data-size="medium"
+          data-button-type="login_with"
+          data-auto-logout-link="false"
+          data-use-continue-as="false"
+          onClick={this.facebookLogin}
+        >
+          <i className="fab fa-facebook-f mr-2" /> Login with Facebook
+        </button>
+        {/* </center> */}
+      </div>
+    );
+  }
+}
+
+// FacebookLogin.propTypes = {
+//   history: PropTypes.object
+// };
+
+Facebook.propTypes = {
+  match: PropTypes.object,
+  location: PropTypes.object,
+  history: PropTypes.object,
+  getUserRoles: PropTypes.func
+};
+
+export default Facebook;
